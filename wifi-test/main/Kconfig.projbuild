@@ -19,4 +19,10 @@ menu "Example Configuration"
         help
             Set WiFi AP password.
 
+    config EXAMPLE_BROKER_URL
+        string "Broker URL"
+        default "mqtt://192.168.88.254"
+        help
+            URL of the MQTT broker to connect to
+
 endmenu

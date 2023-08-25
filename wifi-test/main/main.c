@@ -15,16 +15,24 @@
 #include "esp_event.h"
 #include "nvs_flash.h"
 
+#include "common.h"
+
 #define DEFAULT_SCAN_LIST_SIZE     CONFIG_EXAMPLE_SCAN_LIST_SIZE
 #define DEFAULT_WIFI_SSID          CONFIG_EXAMPLE_WIFI_SSID
 #define DEFAULT_WIFI_PASS          CONFIG_EXAMPLE_WIFI_PASS
 
-static const char *TAG = "wifi";
+const char *TAG = "wifi-test";
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 			       int32_t event_id, void *event_data)
 {
-	if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE) {
+	if (event_base != WIFI_EVENT) {
+		ESP_LOGE(TAG, "%s: unexpected event_base: %s\n", __func__, event_base);
+		return;
+	}
+
+	switch (event_id) {
+	case WIFI_EVENT_SCAN_DONE:
 		wifi_ap_record_t ap_info[DEFAULT_SCAN_LIST_SIZE];
 		uint16_t number = DEFAULT_SCAN_LIST_SIZE;
 		uint16_t ap_count = 0;
@@ -42,15 +50,20 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
 		ESP_LOGI(TAG, "STA scan completed...  Connecting...");
         	esp_wifi_connect();
-    	} else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+		break;
+	case WIFI_EVENT_STA_START:
 		ESP_LOGI(TAG, "STA started...  Scanning...");
 		esp_wifi_scan_start(NULL, true);
-	} else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+		break;
+	case WIFI_EVENT_STA_DISCONNECTED:
 		wifi_event_sta_disconnected_t * event = (wifi_event_sta_disconnected_t *) event_data;
 		ESP_LOGI(TAG, "STA disconnected with reason %d...  Trying to reconnect...", event->reason);
+		mqtt_app_stop();
 		esp_wifi_connect();
-	} else {
+		break;
+	default:
 		ESP_LOGI(TAG, "Unhandled event: %s:%ld\n", event_base, event_id);
+		break;
 	}
 }
 
@@ -58,7 +71,9 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
                            int32_t event_id, void *event_data)
 {
 	ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+
 	ESP_LOGI(TAG, "STA got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+	mqtt_app_start();
 }
 
 void app_main(void)
@@ -72,6 +87,10 @@ void app_main(void)
 	}
 
 	ESP_ERROR_CHECK( ret );
+
+	/* init sidecar apps */
+
+	mqtt_app_init();
 
 	/* init wifi */ 
 
