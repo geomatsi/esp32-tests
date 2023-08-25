@@ -1,17 +1,21 @@
-#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #include "esp_event.h"
-#include "esp_timer.h"
+#include "esp_wifi.h"
+#include "esp_log.h"
+
 #include "mqtt_client.h"
 
 #include "common.h"
 
 #define DEFAULT_MQTT_BROKER_URL   CONFIG_EXAMPLE_BROKER_URL
 
-extern const char *TAG;
+static const char *TAG = "wifi-mqtt";
 
 static esp_mqtt_client_handle_t client;
-static esp_timer_handle_t mqtt_tmr1;
-static char tmr1_message[64];
+static char heartbeat_message[64];
+static bool mqtt_active = false;
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -22,11 +26,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 	switch ((esp_mqtt_event_id_t)event_id) {
 	case MQTT_EVENT_CONNECTED:
 		ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-		msg_id = esp_mqtt_client_publish(client, "/topic/test", "connected", 0, 1, 0);
+		mqtt_active = true;
+		msg_id = esp_mqtt_client_publish(client, "/topic/test", "READY", 0, 1, 0);
 		ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
 		break;
 	case MQTT_EVENT_DISCONNECTED:
 		ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+		mqtt_active = false;
 		break;
 	case MQTT_EVENT_PUBLISHED:
 		ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
@@ -40,16 +46,57 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 	}
 }
 
-static void mqtt_tmr1_callback(void* arg)
+static void connect_handler(void *arg, esp_event_base_t event_base,
+                           int32_t event_id, void *event_data)
 {
-	int64_t time_since_boot = esp_timer_get_time();
+	ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
 
-	ESP_LOGI(TAG, "Periodic mqtt event: time since boot %lld us", time_since_boot);
-	snprintf(tmr1_message, sizeof(tmr1_message), "%lld", time_since_boot);
-	esp_mqtt_client_publish(client, "/topic/test", tmr1_message, 0, 1, 0);
+	ESP_LOGI(TAG, "STA got ipaddr:" IPSTR, IP2STR(&event->ip_info.ip));
+	esp_mqtt_client_start(client);
 }
 
-void mqtt_app_init(void)
+static void disconnect_handler(void *arg, esp_event_base_t event_base,
+			       int32_t event_id, void *event_data)
+{
+	if (event_base != WIFI_EVENT) {
+		ESP_LOGE(TAG, "%s: unexpected event_base: %s\n", __func__, event_base);
+		return;
+	}
+
+	switch (event_id) {
+	case WIFI_EVENT_STA_DISCONNECTED:
+		esp_mqtt_client_stop(client);
+		break;
+	default:
+		ESP_LOGI(TAG, "Unhandled event: %s:%ld\n", event_base, event_id);
+		break;
+	}
+}
+
+static void system_event_handler(void *arg, esp_event_base_t event_base,
+				 int32_t event_id, void *event_data)
+{
+	if (event_base != SYSTEM_EVENTS) {
+		ESP_LOGE(TAG, "%s: unexpected event_base: %s\n", __func__, event_base);
+		return;
+	}
+
+	switch (event_id) {
+	case SYSTEM_HEARTBEAT_EVENT:
+		int64_t heartbeat = *((int64_t *) event_data);
+
+		if (mqtt_active) {
+			snprintf(heartbeat_message, sizeof(heartbeat_message), "%lld sec", heartbeat);
+			esp_mqtt_client_publish(client, "/topic/test", heartbeat_message, 0, 1, 0);
+		}
+		break;
+	default:
+		ESP_LOGI(TAG, "Unhandled event: %s:%ld\n", event_base, event_id);
+		break;
+	}
+}
+
+void mqtt_task(void *args)
 {
 	esp_mqtt_client_config_t mqtt_cfg = {
 		.broker.address.uri = DEFAULT_MQTT_BROKER_URL,
@@ -58,22 +105,31 @@ void mqtt_app_init(void)
 	client = esp_mqtt_client_init(&mqtt_cfg);
 	esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
 
-	esp_timer_create_args_t mqtt_tmr1_args = {
-		.callback = &mqtt_tmr1_callback,
-		.name = "mqtt-tmr1"
-	};
+	ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+			IP_EVENT_STA_GOT_IP,
+			&connect_handler,
+			NULL,
+			NULL));
 
-	ESP_ERROR_CHECK(esp_timer_create(&mqtt_tmr1_args, &mqtt_tmr1));
-}
+	ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+			WIFI_EVENT_STA_DISCONNECTED,
+			&disconnect_handler,
+			NULL,
+			NULL));
 
-void mqtt_app_start(void)
-{
-	esp_mqtt_client_start(client);
-	ESP_ERROR_CHECK(esp_timer_start_periodic(mqtt_tmr1, 5000000));
-}
+	ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+			WIFI_EVENT_STA_DISCONNECTED,
+			&disconnect_handler,
+			NULL,
+			NULL));
 
-void mqtt_app_stop(void)
-{
-	ESP_ERROR_CHECK(esp_timer_stop(mqtt_tmr1));
-	esp_mqtt_client_stop(client);
+	ESP_ERROR_CHECK(esp_event_handler_instance_register(SYSTEM_EVENTS,
+			ESP_EVENT_ANY_ID,
+			&system_event_handler,
+			NULL,
+			NULL));
+
+	while (1) {
+		vTaskDelay(1000);
+	}
 }

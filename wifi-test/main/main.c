@@ -20,8 +20,11 @@
 #define DEFAULT_SCAN_LIST_SIZE     CONFIG_EXAMPLE_SCAN_LIST_SIZE
 #define DEFAULT_WIFI_SSID          CONFIG_EXAMPLE_WIFI_SSID
 #define DEFAULT_WIFI_PASS          CONFIG_EXAMPLE_WIFI_PASS
+#define DEFAULT_STACK_SIZE         CONFIG_ESP_MAIN_TASK_STACK_SIZE
 
-const char *TAG = "wifi-test";
+ESP_EVENT_DEFINE_BASE(SYSTEM_EVENTS);
+
+static const char *TAG = "wifi-main";
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 			       int32_t event_id, void *event_data)
@@ -58,22 +61,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 	case WIFI_EVENT_STA_DISCONNECTED:
 		wifi_event_sta_disconnected_t * event = (wifi_event_sta_disconnected_t *) event_data;
 		ESP_LOGI(TAG, "STA disconnected with reason %d...  Trying to reconnect...", event->reason);
-		mqtt_app_stop();
 		esp_wifi_connect();
 		break;
 	default:
 		ESP_LOGI(TAG, "Unhandled event: %s:%ld\n", event_base, event_id);
 		break;
 	}
-}
-
-static void ip_event_handler(void *arg, esp_event_base_t event_base,
-                           int32_t event_id, void *event_data)
-{
-	ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-
-	ESP_LOGI(TAG, "STA got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-	mqtt_app_start();
 }
 
 void app_main(void)
@@ -87,10 +80,6 @@ void app_main(void)
 	}
 
 	ESP_ERROR_CHECK( ret );
-
-	/* init sidecar apps */
-
-	mqtt_app_init();
 
 	/* init wifi */ 
 
@@ -108,11 +97,12 @@ void app_main(void)
 			NULL,
 			NULL));
 
-	ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-			IP_EVENT_STA_GOT_IP,
-			&ip_event_handler,
-			NULL,
-			NULL));
+	/* init sidecar tasks */
+
+	xTaskCreate(heartbeat_task, "heartbeat_task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+	xTaskCreate(mqtt_task, "mqtt_task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+
+	/* start wifi */
 
 	wifi_config_t wifi_config = {
 		.sta = {
@@ -125,8 +115,4 @@ void app_main(void)
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
 	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
 	ESP_ERROR_CHECK(esp_wifi_start() );
-
-	while (1) {
-		sleep(1);
-	}
 }
