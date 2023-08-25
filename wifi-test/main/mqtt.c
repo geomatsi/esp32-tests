@@ -15,6 +15,7 @@ static const char *TAG = "wifi-mqtt";
 
 static esp_mqtt_client_handle_t client;
 static char heartbeat_message[64];
+static char button_message[64];
 static bool mqtt_active = false;
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
@@ -86,8 +87,15 @@ static void system_event_handler(void *arg, esp_event_base_t event_base,
 		int64_t heartbeat = *((int64_t *) event_data);
 
 		if (mqtt_active) {
-			snprintf(heartbeat_message, sizeof(heartbeat_message), "%lld sec", heartbeat);
+			snprintf(heartbeat_message, sizeof(heartbeat_message), "heartbeat: %lld sec", heartbeat);
 			esp_mqtt_client_publish(client, "/topic/test", heartbeat_message, 0, 1, 0);
+		}
+		break;
+	case SYSTEM_BUTTON_EVENT:
+		if (mqtt_active) {
+			uint32_t level = *((uint32_t *) event_data);
+			snprintf(button_message, sizeof(button_message), "button: %lu", level);
+			esp_mqtt_client_publish(client, "/topic/test", button_message, 0, 1, 0);
 		}
 		break;
 	default:

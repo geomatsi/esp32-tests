@@ -100,6 +100,7 @@ void app_main(void)
 	/* init sidecar tasks */
 
 	xTaskCreate(heartbeat_task, "heartbeat_task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+	xTaskCreate(button_task, "button_task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 	xTaskCreate(mqtt_task, "mqtt_task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
 	/* start wifi */

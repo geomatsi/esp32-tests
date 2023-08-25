@@ -25,4 +25,11 @@ menu "Example Configuration"
         help
             URL of the MQTT broker to connect to
 
+    config EXAMPLE_GPIO_INPUT
+        int "GPIO input pin"
+        range 0 10
+        default 9
+        help
+            GPIO pin number to be used as GPIO_INPUT_IO.
+
 endmenu
