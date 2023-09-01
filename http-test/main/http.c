@@ -37,34 +37,53 @@ static esp_err_t test_get_handler(httpd_req_t *req)
 	unsigned int minor_rev;
 	unsigned int major_rev;
 	uint32_t flash_size;
-	size_t len = 0;
 
-	memset(resp, 0, sizeof(resp));
 	esp_chip_info(&chip_info);
-
-	len += snprintf(resp + len, HTTP_RESP_SIZE - len, "This is %s chip with %d CPU core(s), WiFi%s%s%s<br>",
-		        CONFIG_IDF_TARGET,
-		        chip_info.cores,
-		        (chip_info.features & CHIP_FEATURE_BT) ? "/BT" : "",
-		        (chip_info.features & CHIP_FEATURE_BLE) ? "/BLE" : "",
-		        (chip_info.features & CHIP_FEATURE_IEEE802154) ? ", 802.15.4 (Zigbee/Thread)" : "");
-
 	major_rev = chip_info.revision / 100;
 	minor_rev = chip_info.revision % 100;
-	
-	len += snprintf(resp + len, HTTP_RESP_SIZE - len, "silicon revision v%d.%d<br>",
-			major_rev, minor_rev);
+
+	httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html><body>");
+	httpd_resp_sendstr_chunk(req, "<h2>System</h2>");
+
+	httpd_resp_sendstr_chunk(req,
+		"<table border=\"1\">"
+		"<thead><tr><th>Feature</th><th>Status</th></tr></thead>"
+		"<tbody>");
+
+	snprintf(resp, sizeof(resp), "<tr><td>Chip</td><td>%s revision v%d.%d</td></tr>",
+			CONFIG_IDF_TARGET, major_rev, minor_rev);
+	httpd_resp_sendstr_chunk(req, resp);
+
+	snprintf(resp, sizeof(resp), "<tr><td>Cores</td><td>%d</td></tr>",
+			chip_info.cores);
+	httpd_resp_sendstr_chunk(req, resp);
 
 	if(esp_flash_get_size(NULL, &flash_size) == ESP_OK) {
-		len += snprintf(resp + len, HTTP_RESP_SIZE - len, "%" PRIu32 "MB %s flash<br>",
-				flash_size / (uint32_t)(1024 * 1024),
-				(chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
+		snprintf(resp, sizeof(resp), "<tr><td>%s flash</td><td>%" PRIu32 "MB</td></tr>",
+			(chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external",
+			flash_size / (uint32_t)(1024 * 1024));
+		httpd_resp_sendstr_chunk(req, resp);
 	}
 
-	len += snprintf(resp + len, HTTP_RESP_SIZE - len, "Minimum free heap size: %" PRIu32 " bytes<br>",
-			esp_get_minimum_free_heap_size());
+	snprintf(resp, sizeof(resp), "<tr><td>WiFi</td><td>%s</td></tr>",
+		(chip_info.features & CHIP_FEATURE_WIFI_BGN) ? "OK" : "NO");
+	httpd_resp_sendstr_chunk(req, resp);
 
-	httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+	snprintf(resp, sizeof(resp), "<tr><td>BT</td><td>%s</td></tr>",
+		(chip_info.features & CHIP_FEATURE_BT) ? "OK" : "NO");
+	httpd_resp_sendstr_chunk(req, resp);
+
+	snprintf(resp, sizeof(resp), "<tr><td>BLE</td><td>%s</td></tr>",
+		(chip_info.features & CHIP_FEATURE_BLE) ? "OK" : "NO");
+	httpd_resp_sendstr_chunk(req, resp);
+
+	snprintf(resp, sizeof(resp), "<tr><td>802.15.4</td><td>%s</td></tr>",
+		(chip_info.features & CHIP_FEATURE_IEEE802154) ? "OK" : "NO");
+	httpd_resp_sendstr_chunk(req, resp);
+
+	httpd_resp_sendstr_chunk(req, "</tbody></table>");
+	httpd_resp_sendstr_chunk(req, "</body></html>");
+	httpd_resp_sendstr_chunk(req, NULL);
 
 	return ESP_OK;
 }
