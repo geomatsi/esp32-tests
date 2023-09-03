@@ -1,0 +1,61 @@
+menu "Example Configuration"
+
+    orsource "$IDF_PATH/examples/common_components/env_caps/$IDF_TARGET/Kconfig.env_caps"
+
+    config GPIO_LED_RED
+        int "Red LED GPIO number"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 3
+        help
+            GPIO number (IOxx) to control red LED.
+
+    config GPIO_LED_GREEN
+        int "Green LED GPIO number"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 4
+        help
+            GPIO number (IOxx) to control green LED.
+
+    config GPIO_LED_BLUE
+        int "Blue LED GPIO number"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 5
+        help
+            GPIO number (IOxx) to control blue LED.
+
+    config RED_TIME_MS
+        int "Red LED time in ms"
+        range 10 3600000
+        default 10000
+        help
+            Define red LED time the in milliseconds.
+
+    config GREEN_TIME_MS
+        int "Green LED time in ms"
+        range 10 3600000
+        default 5000
+        help
+            Define green LED time the in milliseconds.
+
+    config GREEN_FLASH_TIME_MS
+        int "Green LED flash period in ms"
+        range 10 3600000
+        default 1000
+        help
+            Define green LED flash period in milliseconds.
+
+    config GREEN_FLASH_COUNT
+        int "Green LED flash count"
+        range 1 100
+        default 10
+        help
+            Define how many times green LED flashes before yellow light.
+
+    config YELLOW_TIME_MS
+        int "Yellow LED time in ms"
+        range 10 3600000
+        default 5000
+        help
+            Define yellow LED time the in milliseconds.
+
+endmenu
