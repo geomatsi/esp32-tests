@@ -1,13 +1,7 @@
 #include "esp_event.h"
 
-ESP_EVENT_DECLARE_BASE(SYSTEM_EVENTS);
-
-enum {
-	SYSTEM_HEARTBEAT_EVENT,
-};
-
 void heartbeat_task(void *args);
 void http_task(void *args);
 
 esp_err_t camera_init(void);
-esp_err_t camera_capture(void);
+esp_err_t camera_capture(char *filepath);

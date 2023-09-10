@@ -19,4 +19,11 @@ menu "Example Configuration"
         help
             Set WiFi AP password.
 
+    config FLASH_LED_PIN
+        int "Flash LED pin"
+        range 0 10
+        default 4
+        help
+            Flash LED pin number.
+
 endmenu

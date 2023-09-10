@@ -1,4 +1,6 @@
 #include "esp_camera.h"
+#include "esp_timer.h"
+#include "esp_vfs.h"
 #include "esp_log.h"
 
 #include "driver/gpio.h"
@@ -65,11 +67,18 @@ static camera_config_t camera_config = {
 	.fb_count = 1,
 
 	/* CAMERA_GRAB_LATEST. Sets when buffers should be filled */
-	.grab_mode = CAMERA_GRAB_WHEN_EMPTY
+	.grab_mode = CAMERA_GRAB_LATEST
 };
 
 esp_err_t camera_init(void)
 {
+	/* Init Flash LED */
+	gpio_reset_pin(CONFIG_FLASH_LED_PIN);
+	gpio_set_direction(CONFIG_FLASH_LED_PIN, GPIO_MODE_OUTPUT);
+	gpio_set_level(CONFIG_FLASH_LED_PIN, 0);
+
+	/* Init camera */
+
 	if (CAM_PIN_PWDN != -1) {
 		gpio_reset_pin(CAM_PIN_PWDN);
 		gpio_set_direction(CAM_PIN_PWDN, GPIO_MODE_OUTPUT);
@@ -85,18 +94,52 @@ esp_err_t camera_init(void)
 	return ESP_OK;
 }
 
-esp_err_t camera_capture(void)
+esp_err_t camera_capture(char *filepath)
 {
-	camera_fb_t *fb = esp_camera_fb_get();
+	camera_fb_t * fb = NULL;
+	size_t fb_len = 0;
+	FILE *fd = NULL;
+	int64_t fr_start;
+	int64_t fr_end;
+
+	gpio_set_level(CONFIG_FLASH_LED_PIN, 1);
+	fr_start = esp_timer_get_time();
+	esp_camera_return_all();
+	fb = esp_camera_fb_get();
 	if (!fb) {
 		ESP_LOGE(TAG, "Camera Capture Failed");
 		return ESP_FAIL;
 	}
 
-	/* custom image processing
-	 * process_image(fb->width, fb->height, fb->format, fb->buf, fb->len);
-	 */
+	gpio_set_level(CONFIG_FLASH_LED_PIN, 0);
 
+	if (fb->format != PIXFORMAT_JPEG) {
+		ESP_LOGE(TAG, "Camera format is not JPEG: %d", fb->format);
+		return ESP_FAIL;
+	}
+
+	fb_len = fb->len;
+
+	fd = fopen(filepath, "w");
+	if (!fd) {
+		ESP_LOGE(TAG, "Failed to create file : %s", filepath);
+		return ESP_FAIL;
+	}
+
+	if (fb_len && (fb_len != fwrite(fb->buf, 1, fb_len, fd))) {
+		ESP_LOGE(TAG, "Failed to store picture to file");
+		/* delete broken file on failure */
+		fclose(fd);
+		unlink(filepath);
+		return ESP_FAIL;
+	}
+
+	fclose(fd);
 	esp_camera_fb_return(fb);
+
+	fr_end = esp_timer_get_time();
+	ESP_LOGI(TAG, "JPEG stored to file: %lu KB %lu ms",
+		(uint32_t)(fb_len / 1024), (uint32_t)((fr_end - fr_start) / 1000));
+
 	return ESP_OK;
 }

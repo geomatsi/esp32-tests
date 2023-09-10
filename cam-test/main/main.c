@@ -103,7 +103,6 @@ void app_main(void)
 
 	/* init sidecar tasks */
 
-	xTaskCreate(heartbeat_task, "heartbeat_task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 	xTaskCreate(http_task, "http_task", DEFAULT_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
 	/* start wifi */
