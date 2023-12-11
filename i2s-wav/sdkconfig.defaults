@@ -1,0 +1,9 @@
+# default target: Wemos Lolin32
+CONFIG_IDF_TARGET_ARCH_XTENSA=y
+CONFIG_IDF_TARGET_ARCH="xtensa"
+CONFIG_IDF_TARGET="esp32"
+CONFIG_IDF_TARGET_ESP32=y
+
+# esp32 i2s configuration: TODO
+
+# custom configuration: TODO
