@@ -6,6 +6,8 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
+
+#include <string.h>
 #include <stdio.h>
 
 #include "freertos/FreeRTOS.h"
@@ -16,6 +18,7 @@
 
 #include "driver/i2s_std.h"
 
+#include "format_wav.h"
 #include "sdkconfig.h"
 
 #define STACK_SIZE 3584
@@ -26,6 +29,58 @@ static i2s_chan_handle_t tx_handle = NULL;
 
 extern const uint8_t test_wav_start[] asm("_binary_test_wav_start");
 extern const uint8_t test_wav_end[]   asm("_binary_test_wav_end");
+
+static fmt_chunk_t *get_wav_fmt(const uint8_t *start, const uint8_t *end)
+{
+	dsc_chunk_t *dsc = (dsc_chunk_t *)start;
+	fmt_chunk_t *fmt;
+
+	if (strncmp(dsc->chunk_id, "RIFF", 4)) {
+		return NULL;
+	}
+
+	if (strncmp(dsc->chunk_format, "WAVE", 4)) {
+		return NULL;
+	}
+
+	/* assume that fmt is always after descriptor */
+	fmt = (fmt_chunk_t *)(start + sizeof(dsc_chunk_t));
+
+	if (strncmp(fmt->subchunk_id, "fmt", 3)) {
+		return NULL;
+	}
+
+	return fmt;
+}
+
+static data_chunk_t *get_wav_audio(const uint8_t *start, const uint8_t *end)
+{
+	dsc_chunk_t *dsc = (dsc_chunk_t *)start;
+	uint8_t *ptr = (uint8_t *)start;
+	data_chunk_t *sch;
+
+	if (strncmp(dsc->chunk_id, "RIFF", 4)) {
+		return NULL;
+	}
+
+	if (strncmp(dsc->chunk_format, "WAVE", 4)) {
+		return NULL;
+	}
+
+	ptr = ptr + sizeof(dsc_chunk_t);
+	sch = (data_chunk_t *)ptr;
+
+	while(ptr < end) {
+		if (!strncmp(sch->subchunk_id, "data", 4)) {
+			return sch;
+		}
+
+		ptr = ptr + sch->subchunk_size + sizeof(data_chunk_t);
+		sch = (data_chunk_t *)ptr;
+	}
+
+	return NULL;
+}
 
 static esp_err_t i2s_driver_init(void)
 {
@@ -51,21 +106,52 @@ static esp_err_t i2s_driver_init(void)
 		},
 	};
 
+	fmt_chunk_t *fmt = get_wav_fmt(test_wav_start, test_wav_end);
+	if (!fmt) {
+		ESP_LOGE(TAG, "%s: failed to find wav file format", __func__);
+		abort();
+	}
+
+	ESP_LOGI(TAG, "%s: format: %u", __func__, fmt->audio_format);
+	ESP_LOGI(TAG, "%s: sample_rate: %lu", __func__, fmt->sample_rate);
+	ESP_LOGI(TAG, "%s: bits_per_sample: %u", __func__, fmt->bits_per_sample);
+	ESP_LOGI(TAG, "%s: type: %s", __func__, (fmt->num_of_channels == I2S_SLOT_MODE_MONO) ? "mono" : "stereo");
+
+	if (fmt->audio_format != 1) {
+		ESP_LOGW(TAG, "%s: unexpected audio format: %u != 1 (PCM)", __func__, fmt->audio_format);
+	}
+
+	std_cfg.clk_cfg.sample_rate_hz = fmt->sample_rate;
+
+	std_cfg.slot_cfg.slot_mask = (fmt->num_of_channels == I2S_SLOT_MODE_MONO) ? I2S_STD_SLOT_LEFT : I2S_STD_SLOT_BOTH;
+	std_cfg.slot_cfg.slot_mode = fmt->num_of_channels;
+
+	std_cfg.slot_cfg.msb_right = (fmt->bits_per_sample <= I2S_DATA_BIT_WIDTH_16BIT) ? true : false;
+	std_cfg.slot_cfg.data_bit_width = fmt->bits_per_sample;
+	std_cfg.slot_cfg.ws_width = fmt->bits_per_sample;
+
 	ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle, &std_cfg));
 	ESP_ERROR_CHECK(i2s_channel_enable(tx_handle));
 
 	return ESP_OK;
 }
 
-static void i2s_test1(void *args)
+static void i2s_test(void *args)
 {
 	esp_err_t ret = ESP_OK;
 	size_t bytes_write = 0;
+	data_chunk_t *data;
+
+	data = get_wav_audio(test_wav_start, test_wav_end);
+	if (!data) {
+		ESP_LOGE(TAG, "%s: failed to find wav file audio data", __func__);
+		abort();
+	}
 
 	while (1) {
 		ESP_LOGI(TAG, "%s: play audio", __func__);
 
-		ret = i2s_channel_write(tx_handle, (uint8_t *)test_wav_start, test_wav_end - test_wav_start, &bytes_write, portMAX_DELAY);
+		ret = i2s_channel_write(tx_handle, data->data, data->subchunk_size, &bytes_write, portMAX_DELAY);
 		if (ret != ESP_OK) {
 			ESP_LOGE(TAG, "%s: i2s write failed: reason %d", __func__, ret);
 			abort();
@@ -94,9 +180,9 @@ void app_main(void)
 		ESP_LOGI(TAG, "i2s driver init success");
 	}
 
-	xTaskCreate(i2s_test1, "i2s_test1", STACK_SIZE, NULL, tskIDLE_PRIORITY, &xTest1Handle);
+	xTaskCreate(i2s_test, "i2s_test", STACK_SIZE, NULL, tskIDLE_PRIORITY, &xTest1Handle);
 	if (!xTest1Handle) {
-		ESP_LOGE(TAG, "Failed to create task i2s_test1");
+		ESP_LOGE(TAG, "Failed to create task i2s_test");
 	}
 
 	while (1) {
