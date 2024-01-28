@@ -1,0 +1,16 @@
+menu "Example Configuration"
+
+    config TBD_NUMBER
+        int "TBD number"
+        range 0 9
+        default 5
+        help
+            TBD number
+
+    config TBD_STRING
+        string "TBD string"
+        default "TBD"
+        help
+            TBD string
+
+endmenu
