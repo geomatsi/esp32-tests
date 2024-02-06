@@ -33,8 +33,8 @@ static i2s_chan_handle_t tx_handle = NULL;
 int16_t sine[SAMPLING_FREQ]; /* duration 1 sec */
 
 size_t sine_float(int freq, unsigned int samples_per_sec, int amp, int16_t *sine, unsigned int samples);
-size_t sine_cordic(int freq, unsigned int samples_per_sec, int amp, int16_t *sine, unsigned int samples);
-size_t sine_cordic_v2(int freq, unsigned int samples_per_sec, int amp, int16_t *sine, unsigned int samples);
+size_t sine_cordic16(int freq, unsigned int samples_per_sec, int amp, int16_t *sine, unsigned int samples);
+size_t sine_cordic32(int freq, unsigned int samples_per_sec, int amp, int16_t *sine, unsigned int samples);
 
 static esp_err_t i2s_driver_init(void)
 {
@@ -92,11 +92,13 @@ static void i2s_test(void *args)
 			ESP_LOGE(TAG, "%s: i2s sound play failed", __func__);
 			abort();
 		}
+
+		vTaskDelay(1000 /* ms */ / portTICK_PERIOD_MS);
 #endif
 
 #if 1
-		sz = sine_cordic_v2(fq, SAMPLING_FREQ, 2000, &sine[0], ARRAY_SIZE(sine));
-		ESP_LOGI(TAG, "%s: play cordic sine: freq %u bytes %u", __func__, fq, sz);
+		sz = sine_cordic16(fq, SAMPLING_FREQ, 2000, &sine[0], ARRAY_SIZE(sine));
+		ESP_LOGI(TAG, "%s: play cordic16 sine: freq %u bytes %u", __func__, fq, sz);
 
 		ret = i2s_channel_write(tx_handle, sine, sz, &bytes_write, portMAX_DELAY);
 		if (ret != ESP_OK) {
@@ -110,7 +112,30 @@ static void i2s_test(void *args)
 			ESP_LOGE(TAG, "%s: i2s sound play failed", __func__);
 			abort();
 		}
+
+		vTaskDelay(1000 /* ms */ / portTICK_PERIOD_MS);
 #endif
+
+#if 1
+		sz = sine_cordic32(fq, SAMPLING_FREQ, 2000, &sine[0], ARRAY_SIZE(sine));
+		ESP_LOGI(TAG, "%s: play cordic32 sine: freq %u bytes %u", __func__, fq, sz);
+
+		ret = i2s_channel_write(tx_handle, sine, sz, &bytes_write, portMAX_DELAY);
+		if (ret != ESP_OK) {
+			ESP_LOGE(TAG, "%s: i2s write failed: reason %d", __func__, ret);
+			abort();
+		}
+
+		if (bytes_write > 0) {
+			ESP_LOGI(TAG, "%s: i2s sound played, %d bytes are written", __func__, bytes_write);
+		} else {
+			ESP_LOGE(TAG, "%s: i2s sound play failed", __func__);
+			abort();
+		}
+
+		vTaskDelay(1000 /* ms */ / portTICK_PERIOD_MS);
+#endif
+
 	}
 }
 
