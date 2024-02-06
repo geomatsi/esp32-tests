@@ -2,7 +2,7 @@
 
 VPATH += ../main
 
-SRCS := test.c sine_float.c sine_cordic.c
+SRCS := test.c sine_float.c sine_cordic16.c sine_cordic32.c
 OBJS := $(SRCS:.c=.o)
 
 all: test
